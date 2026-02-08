@@ -1,17 +1,17 @@
 class Record < Formula
   desc "Record audio, screen, or camera output from the terminal"
   homepage "https://github.com/atacan/record"
-  version "0.1.0"
+  version "0.2.0"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/atacan/record/releases/download/v0.1.0/record-0.1.0-macos-arm64.tar.gz"
-      sha256 "3aa118175251110f37c1ae44a811c2b9dacebd10c5c386ac678e66334e70af16"
+      url "https://github.com/atacan/record/releases/download/v0.2.0/record-0.2.0-macos-arm64.tar.gz"
+      sha256 "74bc377749d98e315972f40eb60162b1dfb6bacff29a5afa670e5a43750b4d4e"
     end
     on_intel do
-      url "https://github.com/atacan/record/releases/download/v0.1.0/record-0.1.0-macos-amd64.tar.gz"
-      sha256 "48a45b0155622131f0ac20be3be362beb4f1155e219e097c9cd5da47e252e5ff"
+      url "https://github.com/atacan/record/releases/download/v0.2.0/record-0.2.0-macos-amd64.tar.gz"
+      sha256 "fdaff38529afcb8a9beda29b68322150ae8ff3bc44274c04cdb05ae94fcfdc59"
     end
   end
 
