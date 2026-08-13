@@ -5,15 +5,15 @@ class Codesplice < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/atacan/code-splice/releases/download/v0.1.1/codesplice-v0.1.1-aarch64-apple-darwin.tar.gz"
-      sha256 "40acb830511ec4d7cdfb0e49bab4de3b4fb193f84188a0e5c6d60e103ae2ef4a"
+      url "https://github.com/atacan/code-splice/releases/download/v0.2.0/codesplice-v0.2.0-aarch64-apple-darwin.tar.gz"
+      sha256 "e589b01623c1d0e1acb9f5a6adb301caaa2fe9fb5b1c04a32b90228fa870438a"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/atacan/code-splice/releases/download/v0.1.1/codesplice-v0.1.1-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "a83819bac3397286caa2ee11f9ed87232c809e9a918f93490a1f0824d0f55524"
+      url "https://github.com/atacan/code-splice/releases/download/v0.2.0/codesplice-v0.2.0-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "cc74815ee670f66ee3d183141c996427d586a6e67c95b7508dbac90e3cab4ab3"
     end
   end
 
