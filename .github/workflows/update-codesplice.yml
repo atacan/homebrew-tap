@@ -1,0 +1,279 @@
+name: Update CodeSplice formula
+
+on:
+  repository_dispatch:
+    types: [codesplice_release_published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable CodeSplice version without the v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-codesplice-formula
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Verify release and open update PR
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve requested release
+        env:
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          DISPATCH_TAG: ${{ github.event.client_payload.tag }}
+          DISPATCH_REPOSITORY: ${{ github.event.client_payload.repository }}
+          DISPATCH_RELEASE_URL: ${{ github.event.client_payload.release_url }}
+          DISPATCH_SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
+          MANUAL_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_EVENT_NAME}" in
+            repository_dispatch)
+              version="${DISPATCH_VERSION}"
+              test "${DISPATCH_REPOSITORY}" = "atacan/code-splice"
+              test "${DISPATCH_TAG}" = "v${version}"
+              ;;
+            workflow_dispatch)
+              version="${MANUAL_VERSION}"
+              ;;
+            *)
+              printf 'unsupported event: %s\n' "${GITHUB_EVENT_NAME}" >&2
+              exit 1
+              ;;
+          esac
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          {
+            printf 'VERSION=%s\n' "$version"
+            printf 'TAG=v%s\n' "$version"
+            printf 'EXPECTED_RELEASE_URL=%s\n' "${DISPATCH_RELEASE_URL}"
+            printf 'EXPECTED_SOURCE_SHA=%s\n' "${DISPATCH_SOURCE_SHA}"
+          } >>"${GITHUB_ENV}"
+
+      - name: Verify the immutable public upstream release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          upstream="atacan/code-splice"
+          macos="codesplice-v${VERSION}-aarch64-apple-darwin.tar.gz"
+          linux="codesplice-v${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          release_dir="${RUNNER_TEMP}/codesplice-release-${VERSION}"
+          mkdir "$release_dir"
+
+          tag_ref="$(gh api "repos/${upstream}/git/ref/tags/${TAG}")"
+          test "$(jq -r .object.type <<<"$tag_ref")" = tag
+          tag_object="$(jq -r .object.sha <<<"$tag_ref")"
+          source_sha="$({
+            gh api "repos/${upstream}/git/tags/${tag_object}" \
+              --jq 'select(.object.type == "commit") | .object.sha'
+          })"
+          test -n "$source_sha"
+          if test -n "${EXPECTED_SOURCE_SHA}"; then
+            test "$source_sha" = "${EXPECTED_SOURCE_SHA}"
+          fi
+
+          release_json="$(gh api "repos/${upstream}/releases/tags/${TAG}")"
+          test "$(jq -r .tag_name <<<"$release_json")" = "$TAG"
+          test "$(jq -r .draft <<<"$release_json")" = false
+          test "$(jq -r .prerelease <<<"$release_json")" = false
+          release_url="$(jq -r .html_url <<<"$release_json")"
+          if test -n "${EXPECTED_RELEASE_URL}"; then
+            test "$release_url" = "${EXPECTED_RELEASE_URL}"
+          fi
+
+          actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
+          expected_assets="$({
+            printf '%s\n' SHA256SUMS "$macos" "$linux" | LC_ALL=C sort
+          })"
+          test "$actual_assets" = "$expected_assets"
+
+          for asset in SHA256SUMS "$macos" "$linux"; do
+            curl --fail --location --proto '=https' --tlsv1.2 --retry 3 \
+              --output "${release_dir}/${asset}" \
+              "https://github.com/${upstream}/releases/download/${TAG}/${asset}"
+            expected_digest="$(
+              jq -r --arg asset "$asset" \
+                '.assets[] | select(.name == $asset) | .digest' <<<"$release_json"
+            )"
+            actual_digest="sha256:$(shasum -a 256 "${release_dir}/${asset}" | awk '{print $1}')"
+            test "$expected_digest" = "$actual_digest"
+          done
+
+          checksum_file="${release_dir}/SHA256SUMS"
+          test "$(wc -l <"$checksum_file" | tr -d ' ')" = 2
+          test "$(grep -Ec "^[0-9a-f]{64}  codesplice-v${VERSION}-(aarch64-apple-darwin|x86_64-unknown-linux-gnu)\\.tar\\.gz$" "$checksum_file")" = 2
+          test "$(awk '{print $2}' "$checksum_file" | LC_ALL=C sort)" = "$({ printf '%s\n' "$macos" "$linux" | LC_ALL=C sort; })"
+          (cd "$release_dir" && shasum -a 256 -c SHA256SUMS)
+
+          archive_root="codesplice-v${VERSION}-aarch64-apple-darwin"
+          actual_entries="$(tar -tzf "${release_dir}/${macos}" | LC_ALL=C sort)"
+          expected_entries="$({
+            printf '%s\n' \
+              "${archive_root}/" \
+              "${archive_root}/LICENSE" \
+              "${archive_root}/README.md" \
+              "${archive_root}/agent-integration.md" \
+              "${archive_root}/codesplice" \
+              "${archive_root}/platform-support.md" \
+              "${archive_root}/protocol.md" \
+              | LC_ALL=C sort
+          })"
+          test "$actual_entries" = "$expected_entries"
+          tar -xzf "${release_dir}/${macos}" -C "$release_dir"
+          test "$("${release_dir}/${archive_root}/codesplice" --version)" = "codesplice ${VERSION}"
+
+          macos_sha="$(awk -v name="$macos" '$2 == name { print $1 }' "$checksum_file")"
+          linux_sha="$(awk -v name="$linux" '$2 == name { print $1 }' "$checksum_file")"
+          [[ "$macos_sha" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$linux_sha" =~ ^[0-9a-f]{64}$ ]]
+          {
+            printf 'MACOS_SHA=%s\n' "$macos_sha"
+            printf 'LINUX_SHA=%s\n' "$linux_sha"
+            printf 'SOURCE_SHA=%s\n' "$source_sha"
+            printf 'RELEASE_URL=%s\n' "$release_url"
+          } >>"${GITHUB_ENV}"
+
+      - name: Prepare an idempotent formula update
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="automation/codesplice-v${VERSION}"
+          pending="$({
+            gh pr list --state open --limit 100 \
+              --json number,headRefName,url \
+              --jq '[.[] | select(.headRefName | startswith("automation/codesplice-v"))]'
+          })"
+          conflicts="$(
+            jq --arg branch "$branch" '[.[] | select(.headRefName != $branch)] | length' <<<"$pending"
+          )"
+          test "$conflicts" = 0
+          existing_pr="$(
+            jq -r --arg branch "$branch" \
+              '[.[] | select(.headRefName == $branch)] | if length == 1 then .[0].url elif length == 0 then "" else error("duplicate update PRs") end' \
+              <<<"$pending"
+          )"
+          expected_formula="${RUNNER_TEMP}/expected-codesplice.rb"
+          cp Formula/codesplice.rb "$expected_formula"
+          CODESPLICE_FORMULA="$expected_formula" \
+            scripts/update-codesplice-formula.rb "$VERSION" "$MACOS_SHA" "$LINUX_SHA"
+
+          if git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1; then
+            git switch --force-create "$branch" "origin/${branch}"
+            test "$(git diff --name-only origin/main...HEAD)" = Formula/codesplice.rb
+            cmp "$expected_formula" Formula/codesplice.rb
+            test -z "$(git status --porcelain)"
+            if test -n "$existing_pr"; then
+              create_pr=false
+            else
+              create_pr=true
+            fi
+            {
+              printf 'CREATE_PR=%s\n' "$create_pr"
+              printf 'PUSH_BRANCH=false\n'
+              printf 'PR_URL=%s\n' "$existing_pr"
+            } >>"${GITHUB_ENV}"
+          else
+            test -z "$existing_pr"
+            scripts/update-codesplice-formula.rb "$VERSION" "$MACOS_SHA" "$LINUX_SHA"
+            if git diff --quiet -- Formula/codesplice.rb; then
+              test -z "$(git status --porcelain)"
+              {
+                printf 'CREATE_PR=false\n'
+                printf 'PUSH_BRANCH=false\n'
+                printf 'PR_URL=\n'
+              } >>"${GITHUB_ENV}"
+            else
+              test "$(git diff --name-only)" = Formula/codesplice.rb
+              git diff --check
+              git switch --create "$branch"
+              {
+                printf 'CREATE_PR=true\n'
+                printf 'PUSH_BRANCH=true\n'
+                printf 'PR_URL=\n'
+              } >>"${GITHUB_ENV}"
+            fi
+          fi
+          printf 'UPDATE_BRANCH=%s\n' "$branch" >>"${GITHUB_ENV}"
+
+      - name: Audit, install, and test the formula
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          brew style Formula/codesplice.rb
+          brew tap atacan/tap https://github.com/atacan/homebrew-tap
+          tap_directory="$(brew --repository atacan/tap)"
+          cp Formula/codesplice.rb "${tap_directory}/Formula/codesplice.rb"
+          brew trust --formula atacan/tap/codesplice
+          brew audit --strict --online atacan/tap/codesplice
+          brew install --formula atacan/tap/codesplice
+          brew test atacan/tap/codesplice
+          test "$(codesplice --version)" = "codesplice ${VERSION}"
+
+      - name: Commit, push, and open the pull request
+        if: env.CREATE_PR == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test "${PUSH_BRANCH}" = true; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add Formula/codesplice.rb
+            git commit -m "codesplice: update to ${VERSION}"
+            git push --set-upstream origin "HEAD:refs/heads/${UPDATE_BRANCH}"
+          else
+            test "$(git branch --show-current)" = "${UPDATE_BRANCH}"
+            test -z "$(git status --porcelain)"
+          fi
+          # The single-quoted strings keep Markdown backticks literal.
+          # shellcheck disable=SC2016
+          body="$({
+            printf 'Automated update for stable [CodeSplice v%s](%s).\n\n' "$VERSION" "$RELEASE_URL"
+            printf -- '- Verified the annotated upstream tag resolves to `%s`.\n' "$SOURCE_SHA"
+            printf -- '- Verified the release is public, stable, and has exactly the expected assets.\n'
+            printf -- '- Verified `SHA256SUMS` and both downloaded archives.\n'
+            printf -- '- Audited, installed, and tested the formula on macOS arm64.\n'
+          })"
+          pr_url="$(
+            gh pr create \
+              --base main \
+              --head "$UPDATE_BRANCH" \
+              --title "codesplice: update to ${VERSION}" \
+              --body "$body"
+          )"
+          printf 'Created %s\n' "$pr_url"
+
+      - name: Report idempotent result
+        if: env.CREATE_PR != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -n "${PR_URL}"; then
+            printf 'The verified update PR already exists: %s\n' "${PR_URL}"
+          else
+            printf 'The main-branch formula already matches CodeSplice %s.\n' "${VERSION}"
+          fi
