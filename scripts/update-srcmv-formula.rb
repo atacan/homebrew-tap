@@ -1,15 +1,15 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-FORMULA = File.expand_path(ENV.fetch("CODESPLICE_FORMULA", "../Formula/codesplice.rb"), __dir__)
-UPSTREAM = "https://github.com/atacan/code-splice/releases/download"
+FORMULA = File.expand_path(ENV.fetch("SRCMV_FORMULA", "../Formula/srcmv.rb"), __dir__)
+UPSTREAM = "https://github.com/atacan/srcmv/releases/download"
 TARGETS = {
   "aarch64-apple-darwin" => :macos,
   "x86_64-unknown-linux-gnu" => :linux,
 }.freeze
 
 def fail!(message)
-  warn "update-codesplice-formula: #{message}"
+  warn "update-srcmv-formula: #{message}"
   exit 1
 end
 
@@ -32,18 +32,22 @@ requested_version = parse_version(version)
 fail!("invalid macOS SHA-256 digest") unless valid_digest?(macos_digest)
 fail!("invalid Linux SHA-256 digest") unless valid_digest?(linux_digest)
 
+# The initial formula must be merged with verified release checksums before the
+# updater can run; a missing formula is an explicit, recoverable condition.
+fail!("#{FORMULA} is missing; merge the initial Formula/srcmv.rb first") unless File.file?(FORMULA)
+
 source = File.binread(FORMULA)
-formula_urls = source.scan(/^\s*url "([^"]+)"$/).flatten.grep(%r{/atacan/code-splice/})
-fail!("expected exactly two CodeSplice URLs") unless formula_urls.length == TARGETS.length
+formula_urls = source.scan(/^\s*url "([^"]+)"$/).flatten.grep(%r{/atacan/srcmv/})
+fail!("expected exactly two srcmv URLs") unless formula_urls.length == TARGETS.length
 
 current = {}
 formula_urls.each do |url|
-  match = url.match(%r{\A#{Regexp.escape(UPSTREAM)}/v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))/codesplice-v\1-([^/]+)\.tar\.gz\z})
-  fail!("unexpected CodeSplice URL: #{url}") unless match
+  match = url.match(%r{\A#{Regexp.escape(UPSTREAM)}/v((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))/srcmv-v\1-([^/]+)\.tar\.gz\z})
+  fail!("unexpected srcmv URL: #{url}") unless match
 
   current_version, target = match.captures
-  fail!("unexpected CodeSplice target: #{target}") unless TARGETS.key?(target)
-  fail!("duplicate CodeSplice target: #{target}") if current.key?(target)
+  fail!("unexpected srcmv target: #{target}") unless TARGETS.key?(target)
+  fail!("duplicate srcmv target: #{target}") if current.key?(target)
 
   digest_match = source.match(/url "#{Regexp.escape(url)}"\n\s+sha256 "([0-9a-f]{64})"/)
   fail!("missing canonical checksum immediately after #{target} URL") unless digest_match
@@ -69,13 +73,13 @@ if comparison.zero?
   end
   fail!("release #{version} already exists with different checksums") unless mismatches.empty?
 
-  puts "CodeSplice formula already matches #{version}"
+  puts "srcmv formula already matches #{version}"
   exit 0
 end
 
 updated = source.dup
 current.each do |target, entry|
-  new_url = "#{UPSTREAM}/v#{version}/codesplice-v#{version}-#{target}.tar.gz"
+  new_url = "#{UPSTREAM}/v#{version}/srcmv-v#{version}-#{target}.tar.gz"
   old_pair = %(url "#{entry[:url]}"\n      sha256 "#{entry[:digest]}")
   new_pair = %(url "#{new_url}"\n      sha256 "#{requested_digests.fetch(target)}")
   fail!("could not locate the canonical #{target} URL/checksum pair") unless updated.scan(old_pair).length == 1
@@ -85,4 +89,4 @@ end
 
 fail!("formula update unexpectedly made no changes") if updated == source
 File.binwrite(FORMULA, updated)
-puts "Updated CodeSplice formula from #{current_version} to #{version}"
+puts "Updated srcmv formula from #{current_version} to #{version}"
