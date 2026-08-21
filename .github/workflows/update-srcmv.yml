@@ -1,12 +1,12 @@
-name: Update CodeSplice formula
+name: Update srcmv formula
 
 on:
   repository_dispatch:
-    types: [codesplice_release_published]
+    types: [srcmv_release_published]
   workflow_dispatch:
     inputs:
       version:
-        description: Stable CodeSplice version without the v prefix
+        description: Stable srcmv version without the v prefix
         required: true
         type: string
 
@@ -15,7 +15,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: update-codesplice-formula
+  group: update-srcmv-formula
   cancel-in-progress: false
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
           case "${GITHUB_EVENT_NAME}" in
             repository_dispatch)
               version="${DISPATCH_VERSION}"
-              test "${DISPATCH_REPOSITORY}" = "atacan/code-splice"
+              test "${DISPATCH_REPOSITORY}" = "atacan/srcmv"
               test "${DISPATCH_TAG}" = "v${version}"
               ;;
             workflow_dispatch)
@@ -64,16 +64,28 @@ jobs:
             printf 'EXPECTED_SOURCE_SHA=%s\n' "${DISPATCH_SOURCE_SHA}"
           } >>"${GITHUB_ENV}"
 
+      - name: Require the merged initial formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The updater can only rewrite a formula that already exists. Until the
+          # initial Formula/srcmv.rb is merged with verified release checksums,
+          # this workflow fails here; rerun it manually after that merge.
+          test -f Formula/srcmv.rb || {
+            printf 'Formula/srcmv.rb is missing; merge the initial formula with verified checksums, then rerun this workflow with -f version=%s\n' "${VERSION}" >&2
+            exit 1
+          }
+
       - name: Verify the immutable public upstream release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          upstream="atacan/code-splice"
-          macos="codesplice-v${VERSION}-aarch64-apple-darwin.tar.gz"
-          linux="codesplice-v${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-          release_dir="${RUNNER_TEMP}/codesplice-release-${VERSION}"
+          upstream="atacan/srcmv"
+          macos="srcmv-v${VERSION}-aarch64-apple-darwin.tar.gz"
+          linux="srcmv-v${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          release_dir="${RUNNER_TEMP}/srcmv-release-${VERSION}"
           mkdir "$release_dir"
 
           tag_ref="$(gh api "repos/${upstream}/git/ref/tags/${TAG}")"
@@ -117,11 +129,11 @@ jobs:
 
           checksum_file="${release_dir}/SHA256SUMS"
           test "$(wc -l <"$checksum_file" | tr -d ' ')" = 2
-          test "$(grep -Ec "^[0-9a-f]{64}  codesplice-v${VERSION}-(aarch64-apple-darwin|x86_64-unknown-linux-gnu)\\.tar\\.gz$" "$checksum_file")" = 2
+          test "$(grep -Ec "^[0-9a-f]{64}  srcmv-v${VERSION}-(aarch64-apple-darwin|x86_64-unknown-linux-gnu)\\.tar\\.gz$" "$checksum_file")" = 2
           test "$(awk '{print $2}' "$checksum_file" | LC_ALL=C sort)" = "$({ printf '%s\n' "$macos" "$linux" | LC_ALL=C sort; })"
           (cd "$release_dir" && shasum -a 256 -c SHA256SUMS)
 
-          archive_root="codesplice-v${VERSION}-aarch64-apple-darwin"
+          archive_root="srcmv-v${VERSION}-aarch64-apple-darwin"
           actual_entries="$(tar -tzf "${release_dir}/${macos}" | LC_ALL=C sort)"
           expected_entries="$({
             printf '%s\n' \
@@ -129,14 +141,14 @@ jobs:
               "${archive_root}/LICENSE" \
               "${archive_root}/README.md" \
               "${archive_root}/agent-integration.md" \
-              "${archive_root}/codesplice" \
+              "${archive_root}/srcmv" \
               "${archive_root}/platform-support.md" \
               "${archive_root}/protocol.md" \
               | LC_ALL=C sort
           })"
           test "$actual_entries" = "$expected_entries"
           tar -xzf "${release_dir}/${macos}" -C "$release_dir"
-          test "$("${release_dir}/${archive_root}/codesplice" --version)" = "codesplice ${VERSION}"
+          test "$("${release_dir}/${archive_root}/srcmv" --version)" = "srcmv ${VERSION}"
 
           macos_sha="$(awk -v name="$macos" '$2 == name { print $1 }' "$checksum_file")"
           linux_sha="$(awk -v name="$linux" '$2 == name { print $1 }' "$checksum_file")"
@@ -156,11 +168,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          branch="automation/codesplice-v${VERSION}"
+          branch="automation/srcmv-v${VERSION}"
           pending="$({
             gh pr list --state open --limit 100 \
               --json number,headRefName,url \
-              --jq '[.[] | select(.headRefName | startswith("automation/codesplice-v"))]'
+              --jq '[.[] | select(.headRefName | startswith("automation/srcmv-v"))]'
           })"
           conflicts="$(
             jq --arg branch "$branch" '[.[] | select(.headRefName != $branch)] | length' <<<"$pending"
@@ -171,15 +183,15 @@ jobs:
               '[.[] | select(.headRefName == $branch)] | if length == 1 then .[0].url elif length == 0 then "" else error("duplicate update PRs") end' \
               <<<"$pending"
           )"
-          expected_formula="${RUNNER_TEMP}/expected-codesplice.rb"
-          cp Formula/codesplice.rb "$expected_formula"
-          CODESPLICE_FORMULA="$expected_formula" \
-            scripts/update-codesplice-formula.rb "$VERSION" "$MACOS_SHA" "$LINUX_SHA"
+          expected_formula="${RUNNER_TEMP}/expected-srcmv.rb"
+          cp Formula/srcmv.rb "$expected_formula"
+          SRCMV_FORMULA="$expected_formula" \
+            scripts/update-srcmv-formula.rb "$VERSION" "$MACOS_SHA" "$LINUX_SHA"
 
           if git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1; then
             git switch --force-create "$branch" "origin/${branch}"
-            test "$(git diff --name-only origin/main...HEAD)" = Formula/codesplice.rb
-            cmp "$expected_formula" Formula/codesplice.rb
+            test "$(git diff --name-only origin/main...HEAD)" = Formula/srcmv.rb
+            cmp "$expected_formula" Formula/srcmv.rb
             test -z "$(git status --porcelain)"
             if test -n "$existing_pr"; then
               create_pr=false
@@ -193,8 +205,8 @@ jobs:
             } >>"${GITHUB_ENV}"
           else
             test -z "$existing_pr"
-            scripts/update-codesplice-formula.rb "$VERSION" "$MACOS_SHA" "$LINUX_SHA"
-            if git diff --quiet -- Formula/codesplice.rb; then
+            scripts/update-srcmv-formula.rb "$VERSION" "$MACOS_SHA" "$LINUX_SHA"
+            if git diff --quiet -- Formula/srcmv.rb; then
               test -z "$(git status --porcelain)"
               {
                 printf 'CREATE_PR=false\n'
@@ -202,7 +214,7 @@ jobs:
                 printf 'PR_URL=\n'
               } >>"${GITHUB_ENV}"
             else
-              test "$(git diff --name-only)" = Formula/codesplice.rb
+              test "$(git diff --name-only)" = Formula/srcmv.rb
               git diff --check
               git switch --create "$branch"
               {
@@ -222,15 +234,15 @@ jobs:
           set -euo pipefail
           test "$(uname -s)" = Darwin
           test "$(uname -m)" = arm64
-          brew style Formula/codesplice.rb
+          brew style Formula/srcmv.rb
           brew tap atacan/tap https://github.com/atacan/homebrew-tap
           tap_directory="$(brew --repository atacan/tap)"
-          cp Formula/codesplice.rb "${tap_directory}/Formula/codesplice.rb"
-          brew trust --formula atacan/tap/codesplice
-          brew audit --strict --online atacan/tap/codesplice
-          brew install --formula atacan/tap/codesplice
-          brew test atacan/tap/codesplice
-          test "$(codesplice --version)" = "codesplice ${VERSION}"
+          cp Formula/srcmv.rb "${tap_directory}/Formula/srcmv.rb"
+          brew trust --formula atacan/tap/srcmv
+          brew audit --strict --online atacan/tap/srcmv
+          brew install --formula atacan/tap/srcmv
+          brew test atacan/tap/srcmv
+          test "$(srcmv --version)" = "srcmv ${VERSION}"
 
       - name: Commit, push, and open the pull request
         if: env.CREATE_PR == 'true'
@@ -242,8 +254,8 @@ jobs:
           if test "${PUSH_BRANCH}" = true; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add Formula/codesplice.rb
-            git commit -m "codesplice: update to ${VERSION}"
+            git add Formula/srcmv.rb
+            git commit -m "srcmv: update to ${VERSION}"
             git push --set-upstream origin "HEAD:refs/heads/${UPDATE_BRANCH}"
           else
             test "$(git branch --show-current)" = "${UPDATE_BRANCH}"
@@ -252,7 +264,7 @@ jobs:
           # The single-quoted strings keep Markdown backticks literal.
           # shellcheck disable=SC2016
           body="$({
-            printf 'Automated update for stable [CodeSplice v%s](%s).\n\n' "$VERSION" "$RELEASE_URL"
+            printf 'Automated update for stable [srcmv v%s](%s).\n\n' "$VERSION" "$RELEASE_URL"
             printf -- '- Verified the annotated upstream tag resolves to `%s`.\n' "$SOURCE_SHA"
             printf -- '- Verified the release is public, stable, and has exactly the expected assets.\n'
             printf -- '- Verified `SHA256SUMS` and both downloaded archives.\n'
@@ -262,7 +274,7 @@ jobs:
             gh pr create \
               --base main \
               --head "$UPDATE_BRANCH" \
-              --title "codesplice: update to ${VERSION}" \
+              --title "srcmv: update to ${VERSION}" \
               --body "$body"
           )"
           printf 'Created %s\n' "$pr_url"
@@ -275,5 +287,5 @@ jobs:
           if test -n "${PR_URL}"; then
             printf 'The verified update PR already exists: %s\n' "${PR_URL}"
           else
-            printf 'The main-branch formula already matches CodeSplice %s.\n' "${VERSION}"
+            printf 'The main-branch formula already matches srcmv %s.\n' "${VERSION}"
           fi

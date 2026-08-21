@@ -1,0 +1,5 @@
+# Former-identity allowlist for the srcmv rename audit in this tap.
+# Format: PATH<TAB>EXTENDED-REGEX<TAB>REASON  (one entry per line; '#' comments).
+# The audit fails for any tracked former-identity match outside these entries
+# and for any entry that matches nothing.
+scripts/audit-identity.sh	code[-_]?splice	the auditor's own detection patterns
