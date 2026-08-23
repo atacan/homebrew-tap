@@ -5,15 +5,15 @@ class Srcmv < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/atacan/srcmv/releases/download/v0.4.0/srcmv-v0.4.0-aarch64-apple-darwin.tar.gz"
-      sha256 "bba72d745492cd4bb43a4088110546304c64805d55806d72a93d4d248d7fdfd2"
+      url "https://github.com/atacan/srcmv/releases/download/v0.5.0/srcmv-v0.5.0-aarch64-apple-darwin.tar.gz"
+      sha256 "4d353984e5fd157c2b9d8e893697651a10b848751420d1ab658ef33279339b48"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/atacan/srcmv/releases/download/v0.4.0/srcmv-v0.4.0-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "149b421fe59e1720b20bda28d98bdbdc56af55ca96b9f2b39e408d3a15ef0f34"
+      url "https://github.com/atacan/srcmv/releases/download/v0.5.0/srcmv-v0.5.0-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "3ce36a92220440ddf434f48b3474a58c6d16f755ab4e87faa05d493ce2a4af88"
     end
   end
 
