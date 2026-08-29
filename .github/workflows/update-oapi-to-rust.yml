@@ -1,0 +1,294 @@
+name: Update oapi-to-rust formula
+
+on:
+  repository_dispatch:
+    types: [oapi_to_rust_release_published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable oapi-to-rust version without the v prefix
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-oapi-to-rust-formula
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Verify release and open update PR
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve requested release
+        env:
+          DISPATCH_VERSION: ${{ github.event.client_payload.version }}
+          DISPATCH_TAG: ${{ github.event.client_payload.tag }}
+          DISPATCH_REPOSITORY: ${{ github.event.client_payload.repository }}
+          DISPATCH_RELEASE_URL: ${{ github.event.client_payload.release_url }}
+          DISPATCH_SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
+          MANUAL_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_EVENT_NAME}" in
+            repository_dispatch)
+              version="${DISPATCH_VERSION}"
+              # The dispatch payload is a hint, not trusted data: every field
+              # here is re-verified against the live GitHub Release below.
+              test "${DISPATCH_REPOSITORY}" = "atacan/rust-openapi-generator"
+              test "${DISPATCH_TAG}" = "v${version}"
+              ;;
+            workflow_dispatch)
+              version="${MANUAL_VERSION}"
+              ;;
+            *)
+              printf 'unsupported event: %s\n' "${GITHUB_EVENT_NAME}" >&2
+              exit 1
+              ;;
+          esac
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          {
+            printf 'VERSION=%s\n' "$version"
+            printf 'TAG=v%s\n' "$version"
+            printf 'EXPECTED_RELEASE_URL=%s\n' "${DISPATCH_RELEASE_URL}"
+            printf 'EXPECTED_SOURCE_SHA=%s\n' "${DISPATCH_SOURCE_SHA}"
+          } >>"${GITHUB_ENV}"
+
+      - name: Verify the immutable public upstream release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          upstream="atacan/rust-openapi-generator"
+          archives=(
+            "oapi-to-rust-${TAG}-aarch64-apple-darwin.tar.gz"
+            "oapi-to-rust-${TAG}-x86_64-apple-darwin.tar.gz"
+            "oapi-to-rust-${TAG}-aarch64-unknown-linux-gnu.tar.gz"
+            "oapi-to-rust-${TAG}-x86_64-unknown-linux-gnu.tar.gz"
+          )
+          release_dir="${RUNNER_TEMP}/oapi-to-rust-release-${VERSION}"
+          mkdir "$release_dir"
+
+          # The tag may be lightweight or annotated; resolve either shape to
+          # the underlying commit rather than assuming annotated-only.
+          tag_ref="$(gh api "repos/${upstream}/git/ref/tags/${TAG}")"
+          obj_type="$(jq -r .object.type <<<"$tag_ref")"
+          obj_sha="$(jq -r .object.sha <<<"$tag_ref")"
+          case "$obj_type" in
+            tag)
+              source_sha="$(gh api "repos/${upstream}/git/tags/${obj_sha}" --jq 'select(.object.type == "commit") | .object.sha')"
+              ;;
+            commit)
+              source_sha="$obj_sha"
+              ;;
+            *)
+              printf 'unexpected tag object type: %s\n' "$obj_type" >&2
+              exit 1
+              ;;
+          esac
+          test -n "$source_sha"
+          if test -n "${EXPECTED_SOURCE_SHA}"; then
+            test "$source_sha" = "${EXPECTED_SOURCE_SHA}"
+          fi
+
+          release_json="$(gh api "repos/${upstream}/releases/tags/${TAG}")"
+          test "$(jq -r .tag_name <<<"$release_json")" = "$TAG"
+          test "$(jq -r .draft <<<"$release_json")" = false
+          test "$(jq -r .prerelease <<<"$release_json")" = false
+          release_url="$(jq -r .html_url <<<"$release_json")"
+          if test -n "${EXPECTED_RELEASE_URL}"; then
+            test "$release_url" = "${EXPECTED_RELEASE_URL}"
+          fi
+
+          actual_assets="$(jq -r '.assets[].name' <<<"$release_json" | LC_ALL=C sort)"
+          expected_assets="$({ printf '%s\n' SHA256SUMS "${archives[@]}" | LC_ALL=C sort; })"
+          test "$actual_assets" = "$expected_assets"
+
+          for asset in SHA256SUMS "${archives[@]}"; do
+            curl --fail --location --proto '=https' --tlsv1.2 --retry 3 \
+              --output "${release_dir}/${asset}" \
+              "https://github.com/${upstream}/releases/download/${TAG}/${asset}"
+            expected_digest="$(
+              jq -r --arg asset "$asset" \
+                '.assets[] | select(.name == $asset) | .digest' <<<"$release_json"
+            )"
+            actual_digest="sha256:$(shasum -a 256 "${release_dir}/${asset}" | awk '{print $1}')"
+            test "$expected_digest" = "$actual_digest"
+          done
+
+          checksum_file="${release_dir}/SHA256SUMS"
+          test "$(wc -l <"$checksum_file" | tr -d ' ')" = 4
+          expected_checksum_names="$({ printf '%s\n' "${archives[@]}" | LC_ALL=C sort; })"
+          actual_checksum_names="$(awk '{print $2}' "$checksum_file" | LC_ALL=C sort)"
+          test "$actual_checksum_names" = "$expected_checksum_names"
+          (cd "$release_dir" && shasum -a 256 -c SHA256SUMS)
+
+          for archive in "${archives[@]}"; do
+            entries="$(tar -tzf "${release_dir}/${archive}" | LC_ALL=C sort)"
+            test "$entries" = "oapi-to-rust"
+          done
+
+          tar -xzf "${release_dir}/oapi-to-rust-${TAG}-aarch64-apple-darwin.tar.gz" -C "$release_dir"
+          test "$("${release_dir}/oapi-to-rust" --version)" = "oapi-to-rust ${VERSION}"
+
+          macos_arm_sha="$(awk -v name="oapi-to-rust-${TAG}-aarch64-apple-darwin.tar.gz" '$2 == name { print $1 }' "$checksum_file")"
+          macos_intel_sha="$(awk -v name="oapi-to-rust-${TAG}-x86_64-apple-darwin.tar.gz" '$2 == name { print $1 }' "$checksum_file")"
+          linux_arm_sha="$(awk -v name="oapi-to-rust-${TAG}-aarch64-unknown-linux-gnu.tar.gz" '$2 == name { print $1 }' "$checksum_file")"
+          linux_intel_sha="$(awk -v name="oapi-to-rust-${TAG}-x86_64-unknown-linux-gnu.tar.gz" '$2 == name { print $1 }' "$checksum_file")"
+          for sha in "$macos_arm_sha" "$macos_intel_sha" "$linux_arm_sha" "$linux_intel_sha"; do
+            [[ "$sha" =~ ^[0-9a-f]{64}$ ]]
+          done
+          {
+            printf 'MACOS_ARM_SHA=%s\n' "$macos_arm_sha"
+            printf 'MACOS_INTEL_SHA=%s\n' "$macos_intel_sha"
+            printf 'LINUX_ARM_SHA=%s\n' "$linux_arm_sha"
+            printf 'LINUX_INTEL_SHA=%s\n' "$linux_intel_sha"
+            printf 'SOURCE_SHA=%s\n' "$source_sha"
+            printf 'RELEASE_URL=%s\n' "$release_url"
+          } >>"${GITHUB_ENV}"
+
+      - name: Prepare an idempotent formula update
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="automation/oapi-to-rust-v${VERSION}"
+          pending="$({
+            gh pr list --state open --limit 100 \
+              --json number,headRefName,url \
+              --jq '[.[] | select(.headRefName | startswith("automation/oapi-to-rust-v"))]'
+          })"
+          conflicts="$(
+            jq --arg branch "$branch" '[.[] | select(.headRefName != $branch)] | length' <<<"$pending"
+          )"
+          test "$conflicts" = 0
+          existing_pr="$(
+            jq -r --arg branch "$branch" \
+              '[.[] | select(.headRefName == $branch)] | if length == 1 then .[0].url elif length == 0 then "" else error("duplicate update PRs") end' \
+              <<<"$pending"
+          )"
+          expected_formula="${RUNNER_TEMP}/expected-oapi-to-rust.rb"
+          cp Formula/oapi-to-rust.rb "$expected_formula" 2>/dev/null || true
+          OAPI_TO_RUST_FORMULA="$expected_formula" \
+            scripts/update-oapi-to-rust-formula.rb "$VERSION" "$MACOS_ARM_SHA" "$MACOS_INTEL_SHA" "$LINUX_ARM_SHA" "$LINUX_INTEL_SHA"
+
+          if git ls-remote --exit-code --heads origin "refs/heads/${branch}" >/dev/null 2>&1; then
+            git switch --force-create "$branch" "origin/${branch}"
+            test "$(git diff --name-only origin/main...HEAD)" = Formula/oapi-to-rust.rb
+            cmp "$expected_formula" Formula/oapi-to-rust.rb
+            test -z "$(git status --porcelain)"
+            if test -n "$existing_pr"; then
+              create_pr=false
+            else
+              create_pr=true
+            fi
+            {
+              printf 'CREATE_PR=%s\n' "$create_pr"
+              printf 'PUSH_BRANCH=false\n'
+              printf 'PR_URL=%s\n' "$existing_pr"
+            } >>"${GITHUB_ENV}"
+          else
+            test -z "$existing_pr"
+            scripts/update-oapi-to-rust-formula.rb "$VERSION" "$MACOS_ARM_SHA" "$MACOS_INTEL_SHA" "$LINUX_ARM_SHA" "$LINUX_INTEL_SHA"
+            # git diff alone would miss a brand-new (bootstrap) formula file,
+            # since an untracked file never shows up in `git diff`; status
+            # catches both the "file added" and "file modified" cases.
+            if [[ -z "$(git status --porcelain -- Formula/oapi-to-rust.rb)" ]]; then
+              test -z "$(git status --porcelain)"
+              {
+                printf 'CREATE_PR=false\n'
+                printf 'PUSH_BRANCH=false\n'
+                printf 'PR_URL=\n'
+              } >>"${GITHUB_ENV}"
+            else
+              test -z "$(git status --porcelain -- ':!Formula/oapi-to-rust.rb')"
+              git add Formula/oapi-to-rust.rb
+              git diff --cached --check
+              git switch --create "$branch"
+              {
+                printf 'CREATE_PR=true\n'
+                printf 'PUSH_BRANCH=true\n'
+                printf 'PR_URL=\n'
+              } >>"${GITHUB_ENV}"
+            fi
+          fi
+          printf 'UPDATE_BRANCH=%s\n' "$branch" >>"${GITHUB_ENV}"
+
+      - name: Audit, install, and test the formula
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          brew style Formula/oapi-to-rust.rb
+          brew tap atacan/tap https://github.com/atacan/homebrew-tap
+          tap_directory="$(brew --repository atacan/tap)"
+          cp Formula/oapi-to-rust.rb "${tap_directory}/Formula/oapi-to-rust.rb"
+          brew trust --formula atacan/tap/oapi-to-rust
+          brew audit --strict --online atacan/tap/oapi-to-rust
+          brew install --formula atacan/tap/oapi-to-rust
+          brew test atacan/tap/oapi-to-rust
+          test "$(oapi-to-rust --version)" = "oapi-to-rust ${VERSION}"
+
+      - name: Commit, push, and open the pull request
+        if: env.CREATE_PR == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test "${PUSH_BRANCH}" = true; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add Formula/oapi-to-rust.rb
+            git commit -m "oapi-to-rust: update to ${VERSION}"
+            git push --set-upstream origin "HEAD:refs/heads/${UPDATE_BRANCH}"
+          else
+            test "$(git branch --show-current)" = "${UPDATE_BRANCH}"
+            test -z "$(git status --porcelain)"
+          fi
+          # The single-quoted strings keep Markdown backticks literal.
+          # shellcheck disable=SC2016
+          body="$({
+            printf 'Automated update for stable [oapi-to-rust v%s](%s).\n\n' "$VERSION" "$RELEASE_URL"
+            printf -- '- Verified the upstream tag resolves to `%s`.\n' "$SOURCE_SHA"
+            printf -- '- Verified the release is public, stable, and has exactly the expected five assets.\n'
+            printf -- '- Verified `SHA256SUMS` and all four downloaded archives.\n'
+            printf -- '- Audited, installed, and tested the formula on macOS arm64.\n'
+          })"
+          pr_url="$(
+            gh pr create \
+              --base main \
+              --head "$UPDATE_BRANCH" \
+              --title "oapi-to-rust: update to ${VERSION}" \
+              --body "$body"
+          )"
+          printf 'Created %s\n' "$pr_url"
+
+      - name: Report idempotent result
+        if: env.CREATE_PR != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -n "${PR_URL}"; then
+            printf 'The verified update PR already exists: %s\n' "${PR_URL}"
+          else
+            printf 'The main-branch formula already matches oapi-to-rust %s.\n' "${VERSION}"
+          fi
