@@ -12,6 +12,12 @@ Install oapi-to-rust with:
 brew install atacan/tap/oapi-to-rust
 ```
 
+Install Codegenbox with:
+
+```console
+brew install atacan/tap/codegenbox
+```
+
 ## Automated srcmv updates
 
 After srcmv publishes a stable GitHub Release, its release workflow sends the
