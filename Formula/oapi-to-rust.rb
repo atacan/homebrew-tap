@@ -4,25 +4,25 @@ class OapiToRust < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/atacan/rust-openapi-generator/releases/download/v0.3.2/oapi-to-rust-v0.3.2-aarch64-apple-darwin.tar.gz"
-      sha256 "5bc10615e6a9e417e5fff0c4e6e16dc7a882d37027958eb1430f967591781d31"
+      url "https://github.com/atacan/rust-openapi-generator/releases/download/v0.4.0/oapi-to-rust-v0.4.0-aarch64-apple-darwin.tar.gz"
+      sha256 "58c521c0f1c23b49a938587b5ec49214984622906d0814510dd8d3ee8ba64d9f"
     end
 
     on_intel do
-      url "https://github.com/atacan/rust-openapi-generator/releases/download/v0.3.2/oapi-to-rust-v0.3.2-x86_64-apple-darwin.tar.gz"
-      sha256 "2eb2e24794c648dd9bf061d1da42b475495cbd5da916bc5a3ca4e315d8234687"
+      url "https://github.com/atacan/rust-openapi-generator/releases/download/v0.4.0/oapi-to-rust-v0.4.0-x86_64-apple-darwin.tar.gz"
+      sha256 "9bf1755c996ac7d59fa2c9b6375dab6ce0519ff8dac4ab102a0b00508430a556"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/atacan/rust-openapi-generator/releases/download/v0.3.2/oapi-to-rust-v0.3.2-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "a14beb51b9b4d0ed44528b45b6ba4c05de6347878c065ab1ad1b97d8966dac0b"
+      url "https://github.com/atacan/rust-openapi-generator/releases/download/v0.4.0/oapi-to-rust-v0.4.0-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "62481085c4dd12181a7df85d08fc70f59650f03c6a8b01b42f190f4b016c6088"
     end
 
     on_intel do
-      url "https://github.com/atacan/rust-openapi-generator/releases/download/v0.3.2/oapi-to-rust-v0.3.2-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "901d9e4dd977805772f784feca0602c65407239f35e8aed1ab2998209f4d8056"
+      url "https://github.com/atacan/rust-openapi-generator/releases/download/v0.4.0/oapi-to-rust-v0.4.0-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "7669edeecc6b881114c84c1c540b0176ac5e19f88eda4af44a45705bb4aef1c5"
     end
   end
 
