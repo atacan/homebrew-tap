@@ -1,28 +1,28 @@
 class Translate < Formula
   desc "Translate text and files with configurable providers and prompt presets"
   homepage "https://github.com/atacan/translate"
-  version "0.3.0"
+  version "0.4.0"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/atacan/translate/releases/download/v0.3.0/translate-0.3.0-macos-arm64.tar.gz"
-      sha256 "be7e6cc4e1d70bdd82cfe23cc5c9608a308a132c9476edc73f13084818c4df38"
+      url "https://github.com/atacan/translate/releases/download/v0.4.0/translate-0.4.0-macos-arm64.tar.gz"
+      sha256 "28c0c11e3dd259d4ae6679c8f97ffa0b52266793685c119e531439c662fe05e9"
     end
     on_intel do
-      url "https://github.com/atacan/translate/releases/download/v0.3.0/translate-0.3.0-macos-amd64.tar.gz"
-      sha256 "3ea814826440ee91ccbbcd2e6cdb912a4d50d385656b4184096dc3bc1108a7b3"
+      url "https://github.com/atacan/translate/releases/download/v0.4.0/translate-0.4.0-macos-amd64.tar.gz"
+      sha256 "b64619c66184d0f087aa84c7830ad57ae60a333bc6b30ee73db9bb2d2fa37493"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/atacan/translate/releases/download/v0.3.0/translate-0.3.0-linux-arm64.tar.gz"
-      sha256 "f05f33cf865fac5d5cd379d1cdf15e7a6d66747aa1e7cf3c6961c3d21a20cb0a"
+      url "https://github.com/atacan/translate/releases/download/v0.4.0/translate-0.4.0-linux-arm64.tar.gz"
+      sha256 "ee691cd6e542dee16ce0a3374c9edfd7c8dd0688b240f446b2c88883a3c7b47a"
     end
     on_intel do
-      url "https://github.com/atacan/translate/releases/download/v0.3.0/translate-0.3.0-linux-amd64.tar.gz"
-      sha256 "e0e6e21208bfb5d8abc53dd7e8f1b4d697fe59e3043f5ce9ab9444ce7b886d1e"
+      url "https://github.com/atacan/translate/releases/download/v0.4.0/translate-0.4.0-linux-amd64.tar.gz"
+      sha256 "52bd0295741704166dd698e9acdde206036cffefc1e324ec5802303dee729e21"
     end
   end
 
