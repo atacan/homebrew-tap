@@ -4,25 +4,25 @@ class Codegenbox < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/atacan/codegenbox/releases/download/v0.6.0/codegenbox_0.6.0_darwin_arm64.tar.gz"
-      sha256 "43cc59ea0187a3c535beeb5e35775f032120aef190b4ade1d3b299d4ee905ade"
+      url "https://github.com/atacan/codegenbox/releases/download/v0.6.1/codegenbox_0.6.1_darwin_arm64.tar.gz"
+      sha256 "baab33f90cb0d9503bb6e9ec63c2780d57c96260a13276b9e84d64267fc52c07"
     end
 
     on_intel do
-      url "https://github.com/atacan/codegenbox/releases/download/v0.6.0/codegenbox_0.6.0_darwin_amd64.tar.gz"
-      sha256 "f847cca4a72dc01550eff3b3ce9106186783d24384b682525857116afd1d7e42"
+      url "https://github.com/atacan/codegenbox/releases/download/v0.6.1/codegenbox_0.6.1_darwin_amd64.tar.gz"
+      sha256 "1a9adda6c4aad5ec27807b7258e43881b80fd36f8b9e6fdea76872d6afe5dc3d"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/atacan/codegenbox/releases/download/v0.6.0/codegenbox_0.6.0_linux_arm64.tar.gz"
-      sha256 "726d149894706d2e74f5503b8d8bce4c6a23f9b79a99f3c1efddf33bc85910be"
+      url "https://github.com/atacan/codegenbox/releases/download/v0.6.1/codegenbox_0.6.1_linux_arm64.tar.gz"
+      sha256 "fc67c8413ce8e639ef0b4400082fc12b83e0c7a8692b033d1c60db369cddeeff"
     end
 
     on_intel do
-      url "https://github.com/atacan/codegenbox/releases/download/v0.6.0/codegenbox_0.6.0_linux_amd64.tar.gz"
-      sha256 "467c6f597c756ba266d424d8c79014af1be6530b1fba1e7d441b5a68237912f4"
+      url "https://github.com/atacan/codegenbox/releases/download/v0.6.1/codegenbox_0.6.1_linux_amd64.tar.gz"
+      sha256 "aa0c2a92759137464487f556df23995d8c3acf99d482526f97c233725b02d69d"
     end
   end
 
